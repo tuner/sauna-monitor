@@ -107,7 +107,7 @@ if __name__ == '__main__':
                 print("New state: {}".format(state))
                 publish("beep", "500 500 500")
 
-            elif slope < config["thresholds"].getFloat("minimumSlope"):
+            elif slope < config["thresholds"].getfloat("minimumSlope"):
                 print("Add wood!!!")
                 if next_wood_addition_alert <= 0:
                     publish("beep", config["alerts"].get("addWoodSequence", "50 100 50 100 50 100 50"))
