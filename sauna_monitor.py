@@ -73,8 +73,11 @@ if __name__ == '__main__':
 
     next_wood_addition_alert = 0
 
-    interval = config["buffer"].getint("intervaal", 20)
+    interval = config["buffer"].getint("interval", 20)
 
+    # A queue is used for calculating a moving average of the temperature.
+    # Temperature sensor's precision is limited and comparing adjacent samples
+    # may yield erroneous derivatives. A longer interval mitigates the effect.
     buf = collections.deque(maxlen=config["buffer"].getint("size", 9))
     buf.append(get_temp())
 
@@ -100,20 +103,29 @@ if __name__ == '__main__':
                 state = State.WARMING
                 print("New state: {}".format(state))
                 next_wood_addition_alert = 0
+                give_up = config["thresholds"].getint("giveUpAfter", 900) / interval
 
         elif state == State.WARMING:
             if temp >= config["thresholds"].getfloat("ready", 60.0):
                 state = State.COOLING
                 print("New state: {}".format(state))
-                publish("beep", "500 500 500")
+                publish("beep", config["alerts"].get("readySequence", "500 500 500"))
 
             elif slope < config["thresholds"].getfloat("minimumSlope"):
-                print("Add wood!!!")
-                if next_wood_addition_alert <= 0:
-                    publish("beep", config["alerts"].get("addWoodSequence", "50 100 50 100 50 100 50"))
-                    next_wood_addition_alert = config["alerts"].getint("addWoodPeriod", 300) / interval
+                # Give up if the slope stays below the threshold for too long
+                if give_up <= 0:
+                    state = State.COOLING
+                    print("Giving up. Sauna does not seem to get warm today.")
+                    publish("beep", "2000")
 
-                next_wood_addition_alert -= 1
+                else:
+                    print("Add wood!!!")
+                    if next_wood_addition_alert <= 0:
+                        publish("beep", config["alerts"].get("addWoodSequence", "50 100 50 100 50 100 50"))
+                        next_wood_addition_alert = config["alerts"].getint("addWoodPeriod", 300) / interval
+
+                    next_wood_addition_alert -= 1
+                    give_up -= 1
 
         elif state == State.COOLING:
             if temp < config["thresholds"].getfloat("resting", 27.0):
