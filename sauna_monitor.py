@@ -25,6 +25,7 @@ import math
 import collections
 import time
 import configparser
+import datetime
 
 from subprocess import call
 from enum import Enum
@@ -83,6 +84,8 @@ if __name__ == '__main__':
 
     last_ts = time.time()
 
+    log_file = None
+
     while True:
         temp = get_temp()
 
@@ -99,11 +102,16 @@ if __name__ == '__main__':
 
         # Update state
         if state == State.REST:
-            if temp >= config["thresholds"].getfloat("warming", 28.0):
+            if slope >= config["thresholds"].getfloat("warmingDerivative", 0.1):
                 state = State.WARMING
+                warming_start = last_ts # reference for logging
                 print("New state: {}".format(state))
-                next_wood_addition_alert = 0
+                next_wood_addition_alert = config["alerts"].getint("initialAddWoodAlertPeriod", 900) / interval
                 give_up = config["thresholds"].getint("giveUpAfter", 900) / interval
+
+                log_path = config["logging"].get("path")
+                if log_path is not None:
+                    log_file = open(log_path + "/" + datetime.datetime.today().strftime('%Y-%m-%d') + ".log", 'w')
 
         elif state == State.WARMING:
             if temp >= config["thresholds"].getfloat("ready", 60.0):
@@ -111,7 +119,7 @@ if __name__ == '__main__':
                 print("New state: {}".format(state))
                 publish("beep", config["alerts"].get("readySequence", "500 500 500"))
 
-            elif slope < config["thresholds"].getfloat("minimumSlope"):
+            elif slope < config["thresholds"].getfloat("minimumDerivative"):
                 # Give up if the slope stays below the threshold for too long
                 if give_up <= 0:
                     state = State.COOLING
@@ -119,8 +127,8 @@ if __name__ == '__main__':
                     publish("beep", "2000")
 
                 else:
-                    print("Add wood!!!")
                     if next_wood_addition_alert <= 0:
+                        print("Add wood!!!")
                         publish("beep", config["alerts"].get("addWoodSequence", "50 100 50 100 50 100 50"))
                         next_wood_addition_alert = config["alerts"].getint("addWoodPeriod", 300) / interval
 
@@ -131,6 +139,15 @@ if __name__ == '__main__':
             if temp < config["thresholds"].getfloat("resting", 27.0):
                 state = State.REST
                 print("New state: {}".format(state))
+
+
+        if log_file is not None:
+            if state == State.WARMING or state == State.COOLING:
+                log_file.write("{:10.2f}\t{:f}\t{:f}\n".format((last_ts - warming_start) / 60.0, temp, slope))
+                log_file.flush()
+            else:
+                log_file.close()
+                log_file = None
 
 
         ts = time.time()
