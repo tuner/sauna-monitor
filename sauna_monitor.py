@@ -26,11 +26,13 @@ import collections
 import time
 import configparser
 import datetime
+import logging
 
 from subprocess import call
 from enum import Enum
 
 # States
+# TODO: Implement states as true classes that implement their own transition logic etc.
 class State(Enum):
     REST = 1
     WARMING = 2
@@ -64,11 +66,14 @@ def get_sensor_temp(sensor):
 
 def publish(topic, value):
     call(["mosquitto_pub", "-t", config["display"].get("mqttTopic", "koti/displays/18:FE:34:E8:11:32") + "/" + topic, "-m", value])
-    print(value)
+    logger.debug("publishing: %s", value)
 
 
 if __name__ == '__main__':
     config.read("sauna_monitor.ini")
+    logger = logging.getLogger()
+    logger.addHandler(logging.StreamHandler())
+    logger.setLevel(logging.DEBUG)
 
     state = State.REST
 
@@ -94,7 +99,7 @@ if __name__ == '__main__':
 
         buf.append(temp)
 
-        print("State: {}".format(state))
+        logger.debug("State: %s", state)
 
         # \3 = degree symbol
         publish("r0", "Sauna: {:.1f}\3C".format(temp))
@@ -105,7 +110,7 @@ if __name__ == '__main__':
             if slope >= config["thresholds"].getfloat("warmingDerivative", 0.1):
                 state = State.WARMING
                 warming_start = last_ts # reference for logging
-                print("New state: {}".format(state))
+                logger.info("New state: %s", state)
                 next_wood_addition_alert = config["alerts"].getint("initialAddWoodAlertPeriod", 900) / interval
                 give_up = config["thresholds"].getint("giveUpAfter", 900) / interval
 
@@ -116,19 +121,20 @@ if __name__ == '__main__':
         elif state == State.WARMING:
             if temp >= config["thresholds"].getfloat("ready", 60.0):
                 state = State.COOLING
-                print("New state: {}".format(state))
+                logger.info("New state %s", state)
                 publish("beep", config["alerts"].get("readySequence", "500 500 500"))
 
             elif slope < config["thresholds"].getfloat("minimumDerivative"):
                 # Give up if the slope stays below the threshold for too long
                 if give_up <= 0:
                     state = State.COOLING
-                    print("Giving up. Sauna does not seem to get warm today.")
+                    logger.info("Giving up. Sauna does not seem to get warm today.")
                     publish("beep", "2000")
 
                 else:
+                    logger.debug("Warming too slowly. %d rounds to alert.", next_wood_addition_alert)
                     if next_wood_addition_alert <= 0:
-                        print("Add wood!!!")
+                        logger.info("Add wood!!!")
                         publish("beep", config["alerts"].get("addWoodSequence", "50 100 50 100 50 100 50"))
                         next_wood_addition_alert = config["alerts"].getint("addWoodPeriod", 300) / interval
 
@@ -138,7 +144,7 @@ if __name__ == '__main__':
         elif state == State.COOLING:
             if temp < config["thresholds"].getfloat("resting", 27.0):
                 state = State.REST
-                print("New state: {}".format(state))
+                logger.info("New state %s", state)
 
 
         if log_file is not None:
@@ -154,7 +160,7 @@ if __name__ == '__main__':
         s = last_ts + interval - ts
 
         if s > 0:
-            print("Sleeping {} seconds".format(s))
+            logger.debug("Sleeping %f seconds", s)
             time.sleep(s)
 
         last_ts = time.time()
