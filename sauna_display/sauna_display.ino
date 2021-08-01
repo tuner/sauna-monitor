@@ -236,9 +236,13 @@ void setup() {
   lcd.print("SSID           \0");
   lcd.setCursor(0, 1);
   lcd.print("MAC:           \1");
+  
+  WiFi.hostname("SaunaDisplay");
+  WiFi.setPhyMode(WIFI_PHY_MODE_11N);
   WiFi.persistent(false);
-  WiFi.setOutputPower(0);
+  WiFi.setOutputPower(15.0);
   WiFi.begin(ssid, password);
+  
   delay(1000);
   lcd.setCursor(0, 0);
   lcd.print(ssid);
@@ -309,4 +313,3 @@ void loop() {
     lcd.print("                ");
   }
 }
-
