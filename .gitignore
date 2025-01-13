@@ -1,2 +1,7 @@
 logs/
 sauna_display/settings.h
+.RData
+.Rhistory
+R/
+.vscode/
+sauna_monitor.ini
